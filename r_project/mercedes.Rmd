@@ -1,0 +1,525 @@
+---
+title: "Mercedes Benz"
+author: "edugbau"
+date: "2025-04-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Introducción
+
+En este book, nos encargaremos de encontrar patrones en los datasets proporcionados por la empresa, con el objetivo final de poder dar recomendaciones para aumentar ventas y la satisfacción del cliente con el producto final.
+
+# Visualización de datos
+
+Primero, vamos a ver con qué vamos a trabajar. Para ello, importaremos las librerías necesarias.
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate) # Añadida para manejar fechas
+
+```
+
+Podemos observar que tenemos 4 datasets. Empezaremos por cargarlos todos en dataframes para poder trabajar con ellos posteriormente.
+
+```{r}
+customer_vehicle_data <- read.csv("customer_vehicle_data.csv")
+damage_data <- read.csv("damage_data.csv")
+vehicle_data <- read.csv("vehicle_data.csv")
+wishlist_data <- read.csv("wishlist_data.csv")
+```
+
+Vamos a ver con que trabajamos. Podemos observar que tenemos un dataset muy muy grande (damage_data), dos medianos (customer_vehicle_data y vehicle_data) y uno muy pqeueñito (wishlist_data), comparado con los otros, claro está (os habréis quedado agusto con tanta fila)
+
+```{r}
+damage_data |> head(50) |> View()
+customer_vehicle_data |> head(50) |> View()
+vehicle_data |> head(50) |> View()
+wishlist_data |> head(50) |> View()
+```
+
+Vamos por partes. Empezaremos por damage_data. Quiero saber con cuántos tipos de daños vamos a pelearnos.
+
+```{r}
+
+damage_data$damage_type_description |> unique() |> length()
+```
+
+Dios santo bendito.
+
+Menos mal que todo lo hace una máquina y no tengo que ponerme a leerlo todo.
+
+# Análisis más detallado
+
+Primero, veamos los tipos de daños más frecuentes:
+
+```{r}
+# Creamos el dataframe con los conteos de daños
+damage_counts <- damage_data |>
+  count(damage_type_description, sort = TRUE) |>
+  filter(!is.na(damage_type_description) & damage_type_description != "") |> # Filtrar NAs y vacíos
+  head(10)
+```
+
+```{r}
+# Visualización de los tipos de daños más frecuentes
+damage_counts |>
+  ggplot(aes(x = reorder(damage_type_description, n), y = n)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 tipos de daños más comunes",
+       x = "Tipo de daño",
+       y = "Cantidad de incidencias")
+```
+
+Ahora vamos a analizar la relación entre el tipo de vehículo y los daños:
+
+```{r}
+# Unimos los datos de daños con los datos de vehículos usando vehicle_id
+damage_join <- damage_data |>
+  left_join(vehicle_data, by = "vehicle_id")
+
+# Contamos los daños por tipo de vehículo (usando vehicle_type)
+damage_vehicle_summary <- damage_join |>
+  filter(!is.na(vehicle_type)) |> # Evitar NAs en el tipo de vehículo
+  group_by(vehicle_type) |>
+  summarise(
+    total_damages = n()
+    # avg_repair_cost = mean(repair_cost, na.rm = TRUE) # Eliminado, repair_cost_category es categórica
+  ) |>
+  arrange(desc(total_damages))
+
+# Mostramos los top 10 tipos de vehículo con más daños
+print("Top 10 tipos de vehículo con más daños:")
+head(damage_vehicle_summary, 10)
+```
+
+```{r}
+# Visualización de los tipos de vehículo con más daños
+damage_vehicle_summary |>
+  top_n(10, total_damages) |>
+  ggplot(aes(x = reorder(vehicle_type, total_damages), y = total_damages)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 Tipos de Vehículo con Más Daños",
+       x = "Tipo de Vehículo",
+       y = "Cantidad Total de Daños")
+```
+
+Analicemos las preferencias de los clientes (wishlist):
+
+```{r}
+# Preparamos el resumen de la wishlist
+# *** ASUNCIÓN: Unimos por baumuster (wishlist) y baumuster_6 (vehicle) ***
+# Si esto no es correcto, la unión devolverá NAs o estará vacía.
+wishlist_summary <- wishlist_data |>
+  left_join(vehicle_data, by = c("baumuster" = "baumuster_6")) |>
+  filter(!is.na(vehicle_name)) |> # Usamos vehicle_name de wishlist_data
+  group_by(vehicle_name) |>
+  summarise(
+    total_wishes = n()
+    # avg_price = mean(price, na.rm = TRUE) # Eliminado, no hay columna price
+  ) |>
+  arrange(desc(total_wishes))
+
+# Mostramos los modelos más deseados
+print("Modelos más deseados (según wishlist_data$vehicle_name):")
+head(wishlist_summary, 10)
+```
+
+```{r}
+# Visualización de los modelos más deseados
+wishlist_summary |>
+  top_n(10, total_wishes) |>
+  ggplot(aes(x = reorder(vehicle_name, total_wishes), y = total_wishes)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 modelos más deseados",
+       x = "Modelo (vehicle_name)",
+       y = "Cantidad de veces en wishlist")
+```
+
+Veamos la distribución de vehículos por año de primera matriculación:
+
+```{r}
+# Extraemos el año de la fecha de primera matriculación
+vehicle_data_with_year <- vehicle_data |>
+  mutate(registration_year = year(ymd_hms(date_of_first_registration))) |> # Convertir a fecha y extraer año
+  filter(!is.na(registration_year))
+
+# Histograma de años de matriculación
+ggplot(vehicle_data_with_year, aes(x = registration_year)) +
+  geom_histogram(bins = 30, fill = "purple", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Distribución de vehículos por año de 1ª matriculación",
+       x = "Año de Matriculación",
+       y = "Frecuencia")
+```
+
+# 3. Preprocesamiento y Limpieza de Datos
+
+Esta sección prepara los datos para el análisis, abordando fechas, valores faltantes, limpieza de texto, uniones y creación de nuevas características.
+
+```{r load-preprocessing-libs}
+# Cargar librerías necesarias para esta sección
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(tidyr) # Para drop_na y replace_na
+```
+
+Este chunk carga las librerías de R esenciales para las tareas de preprocesamiento que se realizarán a continuación.
+
+```{r handle-dates}
+# --- Manejo de Fechas ---
+
+# Lista de columnas de fecha a convertir
+date_cols_customer <- c("valid_from", "valid_to")
+date_cols_vehicle <- c("date_technical_approval", "date_of_first_registration")
+date_cols_wishlist <- c("wish_create_date", "wish_update_date")
+date_cols_damage <- c("damage_repair_date")
+
+# Función para convertir fechas de forma segura, manejando errores
+safe_as_date <- function(x) {
+  tryCatch(as.Date(x), error = function(e) NA_Date_)
+}
+
+# Función para parsear fechas de vehículos, intentando ymd_hms y luego ymd
+parse_vehicle_date <- function(x) {
+  # Intentar ymd_hms primero
+  parsed_date <- ymd_hms(x, quiet = TRUE)
+  # Si falla (todo NA), intentar ymd
+  if (all(is.na(parsed_date))) {
+    parsed_date <- ymd(x, quiet = TRUE)
+  }
+  # Devolver como Date
+  as.Date(parsed_date)
+}
+
+
+# Aplicar conversión a customer_vehicle_data
+customer_vehicle_data <- customer_vehicle_data |>
+  mutate(across(all_of(date_cols_customer), safe_as_date))
+
+# Aplicar conversión a vehicle_data
+vehicle_data <- vehicle_data |>
+  mutate(
+    date_technical_approval = safe_as_date(date_technical_approval),
+    date_of_first_registration = parse_vehicle_date(date_of_first_registration)
+  )
+
+# Aplicar conversión a wishlist_data
+wishlist_data <- wishlist_data |>
+  mutate(across(all_of(date_cols_wishlist), safe_as_date))
+
+# Aplicar conversión a damage_data
+damage_data <- damage_data |>
+  mutate(across(all_of(date_cols_damage), safe_as_date))
+
+# The safe_as_date function already converts empty strings or invalid formats to NA_Date_
+# So, the na_if step below is removed as it causes a type error after conversion.
+# customer_vehicle_data <- customer_vehicle_data |>
+#   mutate(valid_to = na_if(valid_to, ""))
+
+print("Columnas de fecha convertidas a Date (errores/vacíos son NA).")
+```
+
+Este chunk se encarga de convertir las columnas que contienen fechas (almacenadas como texto) en objetos de tipo `Date`. Define funciones robustas para manejar diferentes formatos y posibles errores durante la conversión.
+
+```{r handle-nas}
+# --- Manejo de Valores Faltantes (NAs) ---
+
+# Imputar NAs en dimensiones de vehículo con "Desconocido"
+vehicle_data <- vehicle_data |>
+  mutate(across(c(height_range, width_range, length_range, height_unit, width_unit, length_unit), ~replace_na(., "Desconocido")))
+
+# Estandarizar NAs en damage_type_description a "unknown" (ya que "unknown" parece usarse)
+damage_data <- damage_data |>
+  mutate(damage_type_description = replace_na(damage_type_description, "unknown"))
+
+# Nota: La imputación de NAs numéricos (ej. damage_mileage) se pospone.
+# Se podría hacer con la media/mediana si es necesario:
+# median_mileage <- median(damage_data$damage_mileage, na.rm = TRUE)
+# damage_data <- damage_data |> mutate(damage_mileage = replace_na(damage_mileage, median_mileage))
+
+print("Valores faltantes (NA) en columnas seleccionadas manejados.")
+```
+
+Aquí se tratan los valores faltantes (`NA`). Para las columnas de dimensiones del vehículo, los `NA` se reemplazan por el texto "Desconocido". En la descripción del tipo de daño, los `NA` se cambian a "unknown" para estandarizar. La imputación de valores numéricos faltantes se deja para más adelante si fuera necesario.
+
+```{r clean-text}
+# --- Limpieza de Texto y Categóricos ---
+
+# Columnas de texto a limpiar
+text_cols_customer <- c("role", "country_code")
+text_cols_vehicle <- c("vehicle_type", "class_bodytype")
+text_cols_wishlist <- c("market", "wish_type", "vehicle_name") # Añadido vehicle_name
+text_cols_damage <- c("damage_type_description", "service_type_description", "repair_cost_category")
+
+# Función para limpiar texto: minúsculas y sin espacios extra
+clean_text <- function(x) {
+  x |> tolower() |> trimws()
+}
+
+# Aplicar limpieza (usando any_of para evitar errores si alguna columna no existe)
+customer_vehicle_data <- customer_vehicle_data |> mutate(across(any_of(text_cols_customer), clean_text))
+vehicle_data <- vehicle_data |> mutate(across(any_of(text_cols_vehicle), clean_text))
+wishlist_data <- wishlist_data |> mutate(across(any_of(text_cols_wishlist), clean_text))
+damage_data <- damage_data |> mutate(across(any_of(text_cols_damage), clean_text))
+
+# Verificar y unificar niveles (ejemplo para country_code)
+# print("Niveles únicos de country_code después de limpiar:")
+# print(unique(customer_vehicle_data$country_code))
+# Aquí iría código para unificar si se detectan variaciones, ej: "de" vs "DE" (aunque tolower ya lo hizo)
+
+# Extraer código de país de market en wishlist_data (asume formato 'xx_XX')
+wishlist_data <- wishlist_data |>
+  mutate(market_country_code = str_sub(market, 1, 2))
+
+print("Columnas de texto limpiadas (minúsculas, sin espacios extra) y código de país extraído.")
+
+```
+
+Este bloque estandariza las columnas de texto seleccionadas convirtiéndolas a minúsculas y eliminando espacios en blanco al principio y al final. También extrae los dos primeros caracteres de la columna `market` (asumiendo que representan el código de país) y los guarda en una nueva columna `market_country_code`.
+
+```{r join-tables}
+# --- Unión de Tablas (Joins) ---
+
+# 1. Unir información de cliente y vehículo
+# Mantiene todas las filas de customer_vehicle_data y añade columnas de vehicle_data
+customer_vehicle_info <- left_join(customer_vehicle_data, vehicle_data, by = "vehicle_id")
+
+# 2. Unir información de daños con cliente-vehículo
+# Mantiene todas las filas de damage_data y añade columnas de customer_vehicle_info
+# Puede generar múltiples filas por cliente/vehículo si hay varios daños
+full_damage_info <- left_join(damage_data, customer_vehicle_info, by = c("customer_id", "vehicle_id"))
+
+# 3. Unir información de wishlist con cliente
+# Mantiene todas las filas de customer_vehicle_data y añade columnas de wishlist_data
+# Puede generar múltiples filas por cliente si tienen varios deseos
+customer_wishlist_info <- left_join(customer_vehicle_data, wishlist_data, by = "customer_id")
+
+# 4. Crear un dataframe principal a nivel cliente-vehículo, agregando info de daños
+# Agrupa por cliente y vehículo para resumir los daños
+damage_summary_per_vehicle <- damage_data |>
+  group_by(customer_id, vehicle_id) |>
+  summarise(
+    num_damages = n(), # Cuenta el número de daños
+    last_damage_date = if (all(is.na(damage_repair_date))) NA_Date_ else max(damage_repair_date, na.rm = TRUE), # Fecha del último daño
+    # Podríamos agregar más resúmenes: fecha primer daño, daño más frecuente, coste medio...
+    .groups = 'drop' # Elimina la agrupación después de summarise
+  )
+
+# Une el resumen de daños al dataframe cliente-vehículo
+main_df <- customer_vehicle_info |>
+  left_join(damage_summary_per_vehicle, by = c("customer_id", "vehicle_id")) |>
+  # Asegura que los vehículos sin daños tengan 0 en num_damages en lugar de NA
+  mutate(num_damages = replace_na(num_damages, 0))
+
+
+print("Tablas unidas. Creados: customer_vehicle_info, full_damage_info, customer_wishlist_info, main_df.")
+# print("Vista previa de main_df:")
+# head(main_df)
+```
+
+Aquí se combinan los diferentes dataframes usando operaciones de `join`. Se crea `customer_vehicle_info` (cliente + vehículo), `full_damage_info` (daño + cliente + vehículo), y `customer_wishlist_info` (cliente + wishlist). Finalmente, se genera un dataframe principal `main_df` a nivel de cliente-vehículo, al que se le añade información resumida de los daños (número total y fecha del último daño).
+
+```{r feature-engineering}
+# --- Ingeniería de Características (Feature Engineering) ---
+
+# Calcular edad del vehículo en el momento del daño (en full_damage_info)
+full_damage_info <- full_damage_info |>
+  mutate(
+    # Calcula la diferencia en días solo si ambas fechas son válidas
+    vehicle_age_at_damage_days = if_else(
+      !is.na(damage_repair_date) & !is.na(date_of_first_registration),
+      as.numeric(damage_repair_date - date_of_first_registration),
+      NA_real_ # NA numérico si falta alguna fecha
+    ),
+    # Convierte días a años (aproximado)
+    vehicle_age_at_damage_years = vehicle_age_at_damage_days / 365.25
+  )
+
+# Calcular duración de la relación cliente-vehículo (en main_df)
+main_df <- main_df |>
+  mutate(
+    # Usa la fecha de hoy si valid_to es NA (relación activa)
+    relationship_end_date = coalesce(valid_to, Sys.Date()),
+    # Calcula la duración en días si ambas fechas son válidas
+    relationship_duration_days = if_else(
+      !is.na(relationship_end_date) & !is.na(valid_from),
+      as.numeric(relationship_end_date - valid_from),
+      NA_real_
+    ),
+    relationship_duration_years = relationship_duration_days / 365.25
+  )
+
+# Calcular tiempo entre creación y actualización de wishlist (en wishlist_data)
+wishlist_data <- wishlist_data |>
+  mutate(
+    # Calcula la diferencia en días si ambas fechas son válidas
+    wishlist_update_lag_days = if_else(
+      !is.na(wish_update_date) & !is.na(wish_create_date),
+      as.numeric(wish_update_date - wish_create_date),
+      NA_real_
+    )
+  )
+
+# Calcular edad actual del vehículo (en main_df)
+main_df <- main_df |>
+  mutate(
+    # Calcula días desde la primera matriculación hasta hoy
+    current_vehicle_age_days = if_else(
+      !is.na(date_of_first_registration),
+      as.numeric(Sys.Date() - date_of_first_registration),
+      NA_real_
+    ),
+    # Convierte a años
+    current_vehicle_age_years = current_vehicle_age_days / 365.25
+  )
+
+
+print("Nuevas características creadas: edades, duraciones, tiempo de actualización wishlist.")
+# print("Vista previa de main_df con nuevas características:")
+# head(main_df |> select(customer_id, vehicle_id, relationship_duration_years, current_vehicle_age_years, num_damages))
+# print("Vista previa de full_damage_info con edad del vehículo en el daño:")
+# head(full_damage_info |> select(customer_id, vehicle_id, damage_repair_date, date_of_first_registration, vehicle_age_at_damage_years))
+
+```
+
+Este chunk crea nuevas variables (features) a partir de las existentes. Calcula la edad del vehículo en el momento de cada daño, la duración de la relación entre el cliente y el vehículo (considerando relaciones activas), el tiempo transcurrido entre la creación y actualización de un deseo en la wishlist, y la edad actual de cada vehículo.
+
+```{r discretize-features}
+# --- Discretización (¡Recomendado para arules y fcaR!) ---
+
+# Discretizar damage_mileage en damage_data (o full_damage_info)
+# Convertir a numérico primero
+damage_data <- damage_data |>
+    mutate(damage_mileage = as.numeric(damage_mileage))
+
+# Usar cuantiles para definir cortes (si hay suficientes datos)
+if (sum(!is.na(damage_data$damage_mileage)) > 4) { # Necesitamos al menos 5 puntos para 4 intervalos
+  mileage_breaks <- quantile(damage_data$damage_mileage, probs = seq(0, 1, 0.25), na.rm = TRUE)
+  mileage_breaks <- unique(mileage_breaks) # Asegurar cortes únicos
+
+  if(length(mileage_breaks) > 1) { # Necesitamos al menos 2 cortes para definir intervalos
+    num_categories <- length(mileage_breaks) - 1
+    # Generar etiquetas dinámicamente si es necesario, o usar fijas si son 4
+    mileage_labels <- c("bajo", "medio-bajo", "medio-alto", "alto")[1:num_categories]
+
+    damage_data <- damage_data |>
+      mutate(
+        mileage_category = cut(damage_mileage,
+                               breaks = mileage_breaks,
+                               labels = mileage_labels,
+                               include.lowest = TRUE, # Incluye el valor más bajo en el primer intervalo
+                               right = FALSE) # Intervalos de la forma [a, b)
+      )
+    print(paste("Kilometraje discretizado en", num_categories, "categorías."))
+
+    # Opcional: Añadir esta categoría a full_damage_info (requiere clave única)
+    # Identificador único por daño (si no existe, crearlo o usar combinación)
+    # damage_data <- damage_data |> mutate(damage_unique_id = row_number()) # Ejemplo
+    # full_damage_info <- left_join(full_damage_info,
+    #                              damage_data |> select(damage_unique_id, mileage_category),
+    #                              by = "damage_unique_id") # Ajustar clave
+
+  } else {
+      print("No se pudieron crear categorías de kilometraje (cortes no únicos).")
+      damage_data$mileage_category <- NA_character_
+  }
+} else {
+  print("Datos insuficientes o faltantes para discretizar el kilometraje.")
+  damage_data$mileage_category <- NA_character_
+}
+
+
+# Discretizar edad actual del vehículo (en main_df)
+age_breaks <- c(0, 2, 5, 10, Inf) # Límites: [0, 2), [2, 5), [5, 10), [10, Inf)
+age_labels <- c("0-2 años", "3-5 años", "6-10 años", "10+ años")
+main_df <- main_df |>
+  mutate(
+    vehicle_age_group = cut(current_vehicle_age_years,
+                            breaks = age_breaks,
+                            labels = age_labels,
+                            right = FALSE, # Intervalos [a, b)
+                            include.lowest = TRUE) # Incluye 0 en el primer intervalo
+  )
+print("Edad actual del vehículo discretizada.")
+
+# Crear variables binarias (flags) para tipos de carrocería (en vehicle_data)
+vehicle_data <- vehicle_data |>
+  mutate(
+    is_suv = str_detect(class_bodytype, "suv"),
+    is_coupe = str_detect(class_bodytype, "coupe"),
+    is_hatchback = str_detect(class_bodytype, "hatchback"),
+    is_van = str_detect(class_bodytype, "van"),
+    is_sedan = str_detect(class_bodytype, "sedan") # Añadir más si es relevante
+    # ... añadir más según sea necesario
+  )
+print("Flags binarios para tipos de carrocería creados en vehicle_data.")
+
+# Añadir estas flags a main_df
+# Primero quitar las flags si ya existen por alguna razón
+main_df <- main_df |>
+  select(-any_of(c("is_suv", "is_coupe", "is_hatchback", "is_van", "is_sedan")))
+# Luego unir las nuevas flags desde vehicle_data
+main_df <- left_join(main_df,
+                     vehicle_data |> select(vehicle_id, starts_with("is_")),
+                     by = "vehicle_id")
+print("Flags de tipo de carrocería añadidas a main_df.")
+
+
+# Simplificar repair_cost_category en damage_data (ejemplo)
+damage_data <- damage_data |>
+  mutate(
+    repair_cost_simple = case_when(
+      repair_cost_category == "low cost" ~ "bajo",
+      repair_cost_category %in% c("medium-high cost", "medium cost") ~ "medio", # Agrupar si hay variaciones
+      repair_cost_category == "high cost" ~ "alto",
+      TRUE ~ repair_cost_category # Mantener otros valores o NAs
+    )
+  )
+print("Categoría de coste de reparación simplificada.")
+
+# Mostrar algunos resultados del preprocesamiento
+# print("Vista previa de damage_data con categorías:")
+# head(damage_data |> select(damage_mileage, mileage_category, repair_cost_category, repair_cost_simple))
+# print("Vista previa de main_df con grupo de edad y flags:")
+# head(main_df |> select(vehicle_id, current_vehicle_age_years, vehicle_age_group, is_suv, is_sedan))
+
+```
+
+Este último bloque realiza la discretización, que es convertir variables numéricas continuas en categorías. Esto es especialmente útil para algoritmos como `arules` (reglas de asociación) o `fcaR` (Análisis Formal de Conceptos). Se discretiza el kilometraje (`damage_mileage`) usando cuantiles y la edad actual del vehículo (`current_vehicle_age_years`) en rangos predefinidos. También se crean variables binarias (verdadero/falso) para indicar el tipo de carrocería (SUV, Coupé, etc.) y se simplifica la categoría de coste de reparación. Las nuevas variables binarias de `vehicle_data` se unen a `main_df`.
+
+Con este análisis hemos podido observar: 1. Los tipos de daños más comunes. 2. Qué tipos de vehículo (vehicle_type) tienen más incidencias de daños. 3. Qué modelos (vehicle_name de wishlist) son los más deseados. 4. Cómo se distribuyen los vehículos según su año de primera matriculación.
+
+Estos patrones nos servirán para dar recomendaciones posteriores que mejoren la satisfacción del cliente y optimicen las ventas.
